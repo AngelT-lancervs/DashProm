@@ -1,91 +1,100 @@
+/* agente.c */
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 
-#define METRIC_COUNT 6
+#define BUFFER_SIZE 1024
 
-// Definir códigos de color ANSI
-#define RED "\033[1;31m"
-#define GREEN "\033[1;32m"
-#define YELLOW "\033[1;33m"
-#define BLUE "\033[1;34m"
-#define RESET "\033[0m"
-
-void gather_metrics(char *output) {
-    int pipe_fd[2];
-    pid_t pid;
-    char buffer[128];
-    memset(output, 0, 1024);
-
-    if (pipe(pipe_fd) == -1) {
-        perror("Pipe failed");
-        exit(1);
+void execute_command(const char *command, char *result) {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
     }
 
-    pid = fork();
-    if (pid < 0) {
-        perror("Fork failed");
-        exit(1);
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
     }
 
-    if (pid == 0) { // Child process
-        close(pipe_fd[0]); // Close read end
-        dup2(pipe_fd[1], STDOUT_FILENO); // Redirect stdout to pipe
-        close(pipe_fd[1]);
-        execlp("sh", "sh", "-c", "free | grep Mem && df / | tail -1 && top -b -n1 | grep '%Cpu' && uptime && who | wc -l && iostat | grep '^avg-cpu' -A 1", NULL);
-        perror("execlp failed");
-        exit(1);
-    } else { // Parent process
-        close(pipe_fd[1]); // Close write end
-        FILE *fp = fdopen(pipe_fd[0], "r");
-        if (!fp) {
-            perror("fdopen failed");
-            exit(1);
+    if (pid == 0) { // Proceso hijo
+        close(pipefd[0]); // Cerrar lectura
+        dup2(pipefd[1], STDOUT_FILENO); // Redirigir salida estándar al pipe
+        execlp("sh", "sh", "-c", command, NULL);
+        perror("execlp"); // Si execlp falla
+        exit(EXIT_FAILURE);
+    } else { // Proceso padre
+        close(pipefd[1]); // Cerrar escritura
+        ssize_t bytes_read = read(pipefd[0], result, BUFFER_SIZE - 1);
+        if (bytes_read < 0) {
+            perror("read");
+            exit(EXIT_FAILURE);
         }
-        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-            strcat(output, buffer);
-        }
-        fclose(fp);
-        wait(NULL); // Wait for child process
+        result[bytes_read] = '\0'; // Asegurar terminación nula
+        close(pipefd[0]);
+        wait(NULL); // Esperar al hijo
     }
 }
 
-void display_dashboard(char *metrics) {
-    printf("\n%sReal-Time Dashboard (Agent)%s\n", BLUE, RESET);
-    printf("%s=====================================%s\n", GREEN, RESET);
+void get_metrics(char *buffer) {
+    char cpu_usage_output[BUFFER_SIZE];
+    char ram_usage_output[BUFFER_SIZE];
+    char disk_usage_output[BUFFER_SIZE];
+    char load_avg_output[BUFFER_SIZE];
+    char users_output[BUFFER_SIZE];
+    char processes_output[BUFFER_SIZE];
 
-    char *line = strtok(metrics, "\n");
-    int line_count = 0;
+    int cpu_usage = 0, ram_usage = 0, disk_usage = 0, users = 0, processes = 0;
+    float load_avg = 0.0;
 
-    while (line) {
-        if (line_count == 0) {
-            printf("%sMemory Usage:%s\n", YELLOW, RESET);
-        } else if (line_count == 1) {
-            printf("%sDisk Usage:%s\n", YELLOW, RESET);
-        } else if (line_count == 2) {
-            printf("%sCPU Usage:%s\n", YELLOW, RESET);
-        } else if (line_count == 3) {
-            printf("%sSystem Load:%s\n", YELLOW, RESET);
-        } else if (line_count == 4) {
-            printf("%sActive Users:%s\n", YELLOW, RESET);
-        } else if (line_count == 5) {
-            printf("%sI/O Wait:%s\n", YELLOW, RESET);
-        }
+    // Obtener uso de CPU
+    execute_command("grep 'cpu ' /proc/stat", cpu_usage_output);
+    long user, nice, system, idle;
+    sscanf(cpu_usage_output, "cpu %ld %ld %ld %ld", &user, &nice, &system, &idle);
+    cpu_usage = (int)((user + nice + system) * 100 / (user + nice + system + idle));
 
-        printf("  %s%s%s\n", GREEN, line, RESET);
-        line = strtok(NULL, "\n");
-        line_count++;
-    }
+    // Obtener uso de RAM
+    execute_command("free | grep Mem", ram_usage_output);
+    long total, used;
+    sscanf(ram_usage_output, "Mem: %ld %ld", &total, &used);
+    ram_usage = (int)((used * 100) / total);
 
-    printf("%s=====================================%s\n", GREEN, RESET);
+    // Obtener uso de disco
+    execute_command("df / | tail -1", disk_usage_output);
+    int percent;
+    sscanf(disk_usage_output, "%*s %*s %*s %*s %d%%", &percent);
+    disk_usage = percent;
+
+    // Obtener carga promedio
+    execute_command("cat /proc/loadavg", load_avg_output);
+    sscanf(load_avg_output, "%f", &load_avg);
+
+    // Obtener número de usuarios conectados
+    execute_command("who | wc -l", users_output);
+    sscanf(users_output, "%d", &users);
+
+    // Obtener número de procesos activos
+    execute_command("ps aux | wc -l", processes_output);
+    sscanf(processes_output, "%d", &processes);
+
+    snprintf(buffer, BUFFER_SIZE, "CPU: %d\nRAM: %d\nDISK: %d\nLOAD: %.2f\nUSERS: %d\nPROCESSES: %d\n",
+             cpu_usage, ram_usage, disk_usage, load_avg, users, processes);
 }
 
 int main() {
-    char metrics[1024];
-    gather_metrics(metrics);
-    display_dashboard(metrics);
+    char metrics[BUFFER_SIZE];
+
+    while (1) {
+        get_metrics(metrics);
+        printf("%s", metrics);
+        fflush(stdout);
+        sleep(10); // Intervalo de 2 segundos para monitoreo en tiempo real
+    }
+
     return 0;
 }

@@ -1,4 +1,4 @@
-/* Mejorado: servidor.c */
+/* servidor.c */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,128 +8,171 @@
 #include <signal.h>
 
 #define SERVER_PORT 1234
-#define MAX_CLIENTS 10
-#define THRESHOLD_RAM 90
-#define THRESHOLD_CPU 80
-#define THRESHOLD_DISK 90
-#define THRESHOLD_LOAD 2.0
-#define THRESHOLD_USERS 10
-#define THRESHOLD_IOWAIT 10
+#define BUFFER_SIZE 1024
 
-pthread_mutex_t client_count_mutex = PTHREAD_MUTEX_INITIALIZER;
-int client_count = 0;
+pthread_mutex_t dashboard_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void send_notification(const char *message) {
-    printf("ALERTA: %s\n", message);
+typedef struct {
+    int client_id;
+    char metrics[BUFFER_SIZE];
+    char alerts[BUFFER_SIZE];
+    int active;
+} Dashboard;
+
+Dashboard *dashboards;
+int max_clients;
+
+void initialize_dashboards() {
+    for (int i = 0; i < max_clients; i++) {
+        dashboards[i].client_id = i + 1;
+        strcpy(dashboards[i].metrics, "CPU (%): 0\nRAM (%): 0\nDISK (%): 0\nLOAD: 0.00\nUSERS: 0\nPROCESSES: 0\n");
+        strcpy(dashboards[i].alerts, "Sin alertas\n");
+        dashboards[i].active = 0;
+    }
+    printf("Dashboards inicializados con %d espacios inactivos.\n", max_clients);
 }
 
-void process_metrics(const char *metrics) {
-    int ram_used = 0, cpu_used = 0, disk_used = 0, users = 0, iowait = 0;
-    float load_avg = 0.0;
+void check_thresholds(const char *metrics, char *alerts) {
+    int cpu, ram, disk, users, processes;
+    float load;
+    sscanf(metrics, "CPU: %d\nRAM: %d\nDISK: %d\nLOAD: %f\nUSERS: %d\nPROCESSES: %d\n", &cpu, &ram, &disk, &load, &users, &processes);
 
-    sscanf(metrics, "Mem: %*d %d", &ram_used);
-    sscanf(metrics, "CPU: %d", &cpu_used);
-    sscanf(metrics, "Disk: %*d %d", &disk_used);
-    sscanf(metrics, "Load: %f", &load_avg);
-    sscanf(metrics, "Users: %d", &users);
-    sscanf(metrics, "IOWait: %d", &iowait);
+    char temp_alerts[BUFFER_SIZE] = "";
+    if (cpu > 80) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: CPU alta (%d%%)\n", cpu);
+    if (ram > 80) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: RAM alta (%d%%)\n", ram);
+    if (disk > 80) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Disco alto (%d%%)\n", disk);
+    if (load > 2.0) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Carga alta (%.2f)\n", load);
+    if (users > 10) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Usuarios activos (%d)\n", users);
+    if (processes > 100) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Procesos activos (%d)\n", processes);
 
-    if (ram_used > THRESHOLD_RAM) {
-        send_notification("Uso de RAM alto.");
-    }
-    if (cpu_used > THRESHOLD_CPU) {
-        send_notification("Uso de CPU alto.");
-    }
-    if (disk_used > THRESHOLD_DISK) {
-        send_notification("Uso de Disco alto.");
-    }
-    if (load_avg > THRESHOLD_LOAD) {
-        send_notification("Promedio de carga alto.");
-    }
-    if (users > THRESHOLD_USERS) {
-        send_notification("Número de usuarios activos alto.");
-    }
-    if (iowait > THRESHOLD_IOWAIT) {
-        send_notification("IO Wait alto.");
+    if (strlen(temp_alerts) == 0) {
+        strcpy(alerts, "Sin alertas\n");
+    } else {
+        strncpy(alerts, temp_alerts, BUFFER_SIZE);
     }
 }
 
-void *handle_client(void *client_sock_ptr) {
-    int client_sock = *(int *)client_sock_ptr;
-    free(client_sock_ptr);
+void display_dashboards() {
+    // Limpiar pantalla y mostrar encabezado
+    printf("\033[H\033[J\033[1;36m================ DASHBOARDS ================\033[0m\n");
+    pthread_mutex_lock(&dashboard_mutex);
 
-    char buffer[1024];
-    int len;
+    for (int i = 0; i < max_clients; i++) {
+        if (dashboards[i].active) {
+            // Cliente activo
+            printf("\033[1;33mCliente %d:\033[0m\n", dashboards[i].client_id); // Amarillo para cliente
+            printf("\033[1;32m%s\033[0m\n", dashboards[i].metrics);            // Verde para métricas
+            printf("\033[1;31mAlertas:\n%s\033[0m\n", dashboards[i].alerts);   // Rojo para alertas
+        } else {
+            // Cliente inactivo
+            printf("\033[1;34mDashboard %d: INACTIVO\033[0m\n", dashboards[i].client_id); // Azul para inactivos
+        }
+        printf("\033[1;36m--------------------------------------------\033[0m\n"); // Línea separadora en cyan
+    }
 
-    pthread_mutex_lock(&client_count_mutex);
-    client_count++;
-    pthread_mutex_unlock(&client_count_mutex);
+    pthread_mutex_unlock(&dashboard_mutex);
+}
+
+void *handle_client(void *arg) {
+    int client_sock = *(int *)arg;
+    free(arg);
+
+    char buffer[BUFFER_SIZE];
+
+    pthread_mutex_lock(&dashboard_mutex);
+    int index = -1;
+    for (int i = 0; i < max_clients; i++) {
+        if (!dashboards[i].active) {
+            index = i;
+            dashboards[i].active = 1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&dashboard_mutex);
+
+    if (index == -1) {
+        printf("No hay espacio para el cliente.\n");
+        close(client_sock);
+        return NULL;
+    }
 
     while (1) {
-        if (recv(client_sock, &len, sizeof(len), 0) <= 0) break;
-        if (recv(client_sock, buffer, len, 0) <= 0) break;
+        int len = recv(client_sock, buffer, BUFFER_SIZE - 1, 0);
+        if (len <= 0) break;
+
         buffer[len] = '\0';
 
-        pthread_mutex_lock(&client_count_mutex);
-        printf("\033[H\033[J"); // Limpiar la consola globalmente
-        printf("Clientes conectados: %d\n\n", client_count);
-        pthread_mutex_unlock(&client_count_mutex);
+        pthread_mutex_lock(&dashboard_mutex);
+        strncpy(dashboards[index].metrics, buffer, BUFFER_SIZE);
+        check_thresholds(buffer, dashboards[index].alerts);
+        pthread_mutex_unlock(&dashboard_mutex);
 
-        printf("Dashboard (Cliente %d):\n", client_sock);
-        printf("%s\n", buffer);
-
-        process_metrics(buffer); // Procesar métricas y verificar thresholds
+        display_dashboards();
     }
 
+    pthread_mutex_lock(&dashboard_mutex);
+    dashboards[index].active = 0;
+    pthread_mutex_unlock(&dashboard_mutex);
+
     close(client_sock);
-
-    pthread_mutex_lock(&client_count_mutex);
-    client_count--;
-    pthread_mutex_unlock(&client_count_mutex);
-
-    printf("Cliente desconectado: %d\n", client_sock);
     return NULL;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Uso: %s <número de clientes>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    max_clients = atoi(argv[1]);
+    if (max_clients <= 0) {
+        fprintf(stderr, "El número de clientes debe ser mayor a 0.\n");
+        return EXIT_FAILURE;
+    }
+
+    dashboards = malloc(sizeof(Dashboard) * max_clients);
+    initialize_dashboards();
+
     int server_sock, *client_sock;
     struct sockaddr_in server, client;
     socklen_t client_len = sizeof(client);
 
-    signal(SIGPIPE, SIG_IGN); // Ignorar señales SIGPIPE
-
-    server_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_sock == -1) {
-        perror("No se pudo crear el socket");
-        exit(EXIT_FAILURE);
+    if ((server_sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Socket");
+        return EXIT_FAILURE;
     }
 
     server.sin_family = AF_INET;
     server.sin_port = htons(SERVER_PORT);
     server.sin_addr.s_addr = INADDR_ANY;
 
-    if (bind(server_sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
-        perror("Error en bind");
-        close(server_sock);
-        exit(EXIT_FAILURE);
+    if (bind(server_sock, (struct sockaddr *)&server, sizeof(server)) == -1) {
+        perror("Bind");
+        return EXIT_FAILURE;
     }
 
-    listen(server_sock, MAX_CLIENTS);
-    printf("Esperando conexiones en el puerto %d...\n", SERVER_PORT);
+    if (listen(server_sock, max_clients) == -1) {
+        perror("Listen");
+        return EXIT_FAILURE;
+    }
 
-    while ((client_sock = malloc(sizeof(int)), *client_sock = accept(server_sock, (struct sockaddr *)&client, &client_len)) >= 0) {
-        pthread_t client_thread;
-        printf("Cliente conectado: %d\n", *client_sock);
+    printf("Servidor esperando conexiones en el puerto %d...\n", SERVER_PORT);
 
-        if (pthread_create(&client_thread, NULL, handle_client, client_sock) != 0) {
-            perror("Error al crear el hilo del cliente");
+    while (1) {
+        client_sock = malloc(sizeof(int));
+        *client_sock = accept(server_sock, (struct sockaddr *)&client, &client_len);
+        if (*client_sock == -1) {
+            perror("Accept");
             free(client_sock);
             continue;
         }
 
-        pthread_detach(client_thread); // Separar el hilo para que no bloquee
+        pthread_t thread;
+        pthread_create(&thread, NULL, handle_client, client_sock);
+        pthread_detach(thread);
     }
 
     close(server_sock);
+    free(dashboards);
     return 0;
 }
