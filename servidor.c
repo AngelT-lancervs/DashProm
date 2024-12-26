@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <curl/curl.h>
 
 #define SERVER_PORT 1234
 #define BUFFER_SIZE 1024
@@ -32,23 +33,80 @@ void initialize_dashboards() {
     printf("Dashboards inicializados con %d espacios inactivos.\n", max_clients);
 }
 
+void enviar_notificación_whatsapp(const char *message) {
+    CURL *curl;
+    CURLcode res;
+    char url[256];
+    char credentials[128];
+    char post_fields[512];
+
+    // Configuración de la URL y credenciales
+    snprintf(url, sizeof(url), "https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", "ACa4f0e37aee9ff628103ba8a1170a62c8");
+    snprintf(credentials, sizeof(credentials), "%s:%s", "ACa4f0e37aee9ff628103ba8a1170a62c8", "529a8918d5060c666bedef8c3a872275");
+
+    // Crear los datos para el cuerpo de la solicitud
+    snprintf(post_fields, sizeof(post_fields),
+             "From=whatsapp:%s&To=whatsapp:%s&Body=%s",
+             "+14155238886", "+593980740851", message);
+
+    // Inicializar CURL
+    curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "Error inicializando libcurl.\n");
+        exit(1);
+    }
+
+    // Configurar la solicitud CURL
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_fields);
+    curl_easy_setopt(curl, CURLOPT_USERPWD, credentials); // Autenticación básica
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);   // Desactivar la verificación SSL (solo para pruebas)
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
+    // Ejecutar la solicitud
+    res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "Error al enviar el mensaje: %s\n", curl_easy_strerror(res));
+        curl_easy_cleanup(curl);
+        exit(1);
+    }
+
+    // Limpiar y finalizar
+    curl_easy_cleanup(curl);
+    printf("Mensaje enviado exitosamente.\n");
+}
+ 
 void check_thresholds(const char *metrics, char *alerts) {
     int cpu, ram, disk, users, processes;
     float load;
     sscanf(metrics, "CPU: %d\nRAM: %d\nDISK: %d\nLOAD: %f\nUSERS: %d\nPROCESSES: %d\n", &cpu, &ram, &disk, &load, &users, &processes);
 
     char temp_alerts[BUFFER_SIZE] = "";
-    if (cpu > 80) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: CPU alta (%d%%)\n", cpu);
-    if (ram > 80) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: RAM alta (%d%%)\n", ram);
-    if (disk > 80) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Disco alto (%d%%)\n", disk);
-    if (load > 2.0) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Carga alta (%.2f)\n", load);
-    if (users > 10) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Usuarios activos (%d)\n", users);
-    if (processes > 100) snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Procesos activos (%d)\n", processes);
+    if (cpu > 70){
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: CPU alta (%d%%)\n", cpu);
+    }     
+    if (ram > 70){
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: RAM alta (%d%%)\n", ram);
+    } 
+    if (disk > 70){
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Disco alto (%d%%)\n", disk);
+    } 
+    if (load > 2.0){
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Carga alta (%.2f)\n", load);
+    } 
+    if (users > 5){
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Usuarios activos (%d)\n", users);
+    } 
+    if (processes > 200){
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Procesos activos (%d)\n", processes);
+    } 
 
     if (strlen(temp_alerts) == 0) {
         strcpy(alerts, "Sin alertas\n");
     } else {
         strncpy(alerts, temp_alerts, BUFFER_SIZE);
+        enviar_notificación_whatsapp(temp_alerts);
     }
 }
 
