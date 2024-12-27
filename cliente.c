@@ -1,4 +1,3 @@
-/* cliente.c */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +9,7 @@
 #include <pthread.h>
 
 #define BUFFER_SIZE 1024
-#define SERVER_PORT 1234
+// El puerto ahora se pasa como argumento, por lo que SERVER_PORT se elimina
 
 pthread_mutex_t dashboard_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -115,13 +114,20 @@ void *execute_agent(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Uso: %s <dirección IP del servidor>\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "Uso: %s <dirección IP del servidor> <puerto>\n", argv[0]);
         return EXIT_FAILURE;
     }
 
     int sock;
     struct sockaddr_in server_addr;
+
+    // Leer el puerto como argumento
+    int port = atoi(argv[2]);
+    if (port <= 0 || port > 65535) {
+        fprintf(stderr, "El puerto debe ser un número entre 1 y 65535.\n");
+        return EXIT_FAILURE;
+    }
 
     // Crear socket
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -130,7 +136,9 @@ int main(int argc, char *argv[]) {
     }
 
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SERVER_PORT);
+    server_addr.sin_port = htons(port);
+
+    // Convertir la dirección IP
     if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0) {
         perror("Dirección IP inválida");
         return EXIT_FAILURE;
