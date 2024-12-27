@@ -87,31 +87,30 @@ void enviar_notificación_whatsapp(const char *message) {
     
 }
  
-void check_thresholds(const char *metrics, char *alerts) {
+void check_thresholds(const char *metrics, char *alerts, int client_id) {
     int cpu, ram, disk, users, processes;
     float load;
     sscanf(metrics, "CPU: %d\nRAM: %d\nDISK: %d\nLOAD: %f\nUSERS: %d\nPROCESSES: %d\n", &cpu, &ram, &disk, &load, &users, &processes);
 
     char temp_alerts[BUFFER_SIZE] = "";
-    if (cpu > 70){
-        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: CPU alta (%d%%)\n", cpu);
-    }     
-    if (ram > 70){
-        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: RAM alta (%d%%)\n", ram);
-    } 
-    if (disk > 70){
-        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Disco alto (%d%%)\n", disk);
-    } 
-    if (load > 2.0){
-        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Carga alta (%.2f)\n", load);
-    } 
-    if (users > 5){
-        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Usuarios activos (%d)\n", users);
-    } 
-    if (processes > 200){
-        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Procesos activos (%d)\n", processes);
-        //enviar_notificación_whatsapp("ola");
-    } 
+    if (cpu > 70) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: CPU alta (%d%%)\n", client_id, cpu);
+    }
+    if (ram > 70) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: RAM alta (%d%%)\n", client_id, ram);
+    }
+    if (disk > 70) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Disco alto (%d%%)\n", client_id, disk);
+    }
+    if (load > 2.0) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Carga alta (%.2f)\n", client_id, load);
+    }
+    if (users > 5) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Usuarios activos (%d)\n", client_id, users);
+    }
+    if (processes > 200) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Procesos activos (%d)\n", client_id, processes);
+    }
 
     if (strlen(temp_alerts) == 0) {
         strcpy(alerts, "Sin alertas\n");
@@ -173,7 +172,7 @@ void *handle_client(void *arg) {
 
         pthread_mutex_lock(&dashboard_mutex);
         strncpy(dashboards[index].metrics, buffer, BUFFER_SIZE);
-        check_thresholds(buffer, dashboards[index].alerts);
+        check_thresholds(buffer, dashboards[index].alerts, dashboards[index].client_id);
         pthread_mutex_unlock(&dashboard_mutex);
 
         display_dashboards();
