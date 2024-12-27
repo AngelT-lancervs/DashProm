@@ -33,48 +33,58 @@ void initialize_dashboards() {
     printf("Dashboards inicializados con %d espacios inactivos.\n", max_clients);
 }
 
+size_t no_op_callback(void *ptr, size_t size, size_t nmemb, void *data) {
+    return size * nmemb; // No hacer nada con la respuesta.
+}
+
 void enviar_notificación_whatsapp(const char *message) {
     CURL *curl;
     CURLcode res;
-    char url[256];
-    char credentials[128];
-    char post_fields[512];
 
-    // Configuración de la URL y credenciales
-    snprintf(url, sizeof(url), "https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", "ACa4f0e37aee9ff628103ba8a1170a62c8");
-    snprintf(credentials, sizeof(credentials), "%s:%s", "ACa4f0e37aee9ff628103ba8a1170a62c8", "529a8918d5060c666bedef8c3a872275");
+    const char *account_sid = "ACa4f0e37aee9ff628103ba8a1170a62c8";
+    const char *auth_token = "529a8918d5060c666bedef8c3a872275";
+    const char *twilio_whatsapp_number = "+14155238886";
+    const char *recipient_whatsapp_number = "+593980740851";
 
-    // Crear los datos para el cuerpo de la solicitud
-    snprintf(post_fields, sizeof(post_fields),
-             "From=whatsapp:%s&To=whatsapp:%s&Body=%s",
-             "+14155238886", "+593980740851", message);
-
-    // Inicializar CURL
+    // Inicializar libcurl
+    curl_global_init(CURL_GLOBAL_ALL);
     curl = curl_easy_init();
-    if (!curl) {
-        fprintf(stderr, "Error inicializando libcurl.\n");
-        exit(1);
-    }
+    if (curl) {
+        char *encoded_from = curl_easy_escape(curl, twilio_whatsapp_number, 0);
+        char *encoded_to = curl_easy_escape(curl, recipient_whatsapp_number, 0);
+        char url[256];
+        snprintf(url, sizeof(url), "https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", account_sid);
 
-    // Configurar la solicitud CURL
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_POST, 1L);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_fields);
-    curl_easy_setopt(curl, CURLOPT_USERPWD, credentials); // Autenticación básica
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);   // Desactivar la verificación SSL (solo para pruebas)
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
 
-    // Ejecutar la solicitud
-    res = curl_easy_perform(curl);
-    if (res != CURLE_OK) {
-        fprintf(stderr, "Error al enviar el mensaje: %s\n", curl_easy_strerror(res));
+        // Construir el cuerpo del mensaje
+        char postfields[2048];
+        snprintf(postfields, sizeof(postfields), "From=whatsapp:%s&To=whatsapp:%s&Body=%s", encoded_from, encoded_to, message);
+
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postfields);
+
+        char userpwd[512];
+        snprintf(userpwd, sizeof(userpwd), "%s:%s", account_sid, auth_token);
+        curl_easy_setopt(curl, CURLOPT_USERPWD, userpwd);
+
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, no_op_callback);
+        printf("%s\n",message);
+        // Realizar la solicitud
+        res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        }
+
+        // Limpiar
         curl_easy_cleanup(curl);
-        exit(1);
+        curl_free(encoded_from);
+        curl_free(encoded_to);
+    } else {
+        fprintf(stderr, "curl_easy_init() failed\n");
     }
-
-    // Limpiar y finalizar
-    curl_easy_cleanup(curl);
-    printf("Mensaje enviado exitosamente.\n");
+    curl_global_cleanup();
+    
 }
  
 void check_thresholds(const char *metrics, char *alerts) {
@@ -100,6 +110,7 @@ void check_thresholds(const char *metrics, char *alerts) {
     } 
     if (processes > 200){
         snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA: Procesos activos (%d)\n", processes);
+        //enviar_notificación_whatsapp("ola");
     } 
 
     if (strlen(temp_alerts) == 0) {
