@@ -6,18 +6,21 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define RAM_ALLOCATION_MB 100
-#define DISK_FILE_SIZE_MB 100
+#define RAM_ALLOCATION_MB 1024  // 1 GB por hilo
+#define DISK_FILE_SIZE_MB 1024  // 1 GB por archivo por hilo
 #define DISK_TEST_FILE "stress_test_file"
-#define NUM_CPU_THREADS 4
-#define NUM_RAM_THREADS 2
-#define NUM_DISK_THREADS 1
+#define NUM_CPU_THREADS 16      // Más hilos para CPU
+#define NUM_RAM_THREADS 8       // Más hilos para RAM
+#define NUM_DISK_THREADS 4      // Más hilos para disco
 
 void *cpu_stress(void *arg) {
-    printf("[CPU Thread] Starting CPU stress test...\n");
-    volatile unsigned long long x = 0;
+    printf("[CPU Thread] Starting aggressive CPU stress test...\n");
     while (1) {
-        x++;
+        volatile double result = 1.0;
+        for (int i = 0; i < 1000000; i++) {
+            result *= 1.000001;  // Operación pesada
+            result /= 1.0000001;
+        }
     }
     return NULL;
 }
@@ -31,11 +34,8 @@ void *ram_stress(void *arg) {
         pthread_exit(NULL);
     }
 
-    memset(memory, 0, size);
     while (1) {
-        for (size_t i = 0; i < size; i++) {
-            memory[i] = (char)(i % 256);
-        }
+        memset(memory, 0xFF, size);  // Escribe más rápido en toda la memoria
     }
     free(memory);
     return NULL;
@@ -53,7 +53,9 @@ void *disk_stress(void *arg) {
     memset(buffer, 'A', size);
 
     while (1) {
-        int fd = open(DISK_TEST_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        char file_name[256];
+        snprintf(file_name, sizeof(file_name), "%s_%ld", DISK_TEST_FILE, pthread_self());
+        int fd = open(file_name, O_WRONLY | O_CREAT | O_APPEND, 0666);  // Elimina O_TRUNC
         if (fd < 0) {
             perror("[Disk Thread] File open failed");
             free(buffer);

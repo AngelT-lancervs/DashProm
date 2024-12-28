@@ -108,7 +108,7 @@ void check_thresholds(const char *metrics, char *alerts, int client_id) {
     if (users > 5) {
         snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Usuarios activos (%d)\n", client_id, users);
     }
-    if (processes > 200) {
+    if (processes > 600) {
         snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Procesos activos (%d)\n", client_id, processes);
     }
 
