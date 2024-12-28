@@ -6,20 +6,18 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define RAM_ALLOCATION_MB 500  // Aumenta a 500 MB por hilo
-#define DISK_FILE_SIZE_MB 500  // Aumenta a 500 MB
+#define RAM_ALLOCATION_MB 100
+#define DISK_FILE_SIZE_MB 100
 #define DISK_TEST_FILE "stress_test_file"
-#define NUM_CPU_THREADS 8      // Duplica el número de hilos
-#define NUM_RAM_THREADS 4      // Más hilos para RAM
-#define NUM_DISK_THREADS 2     // Más hilos para disco
+#define NUM_CPU_THREADS 4
+#define NUM_RAM_THREADS 2
+#define NUM_DISK_THREADS 1
 
 void *cpu_stress(void *arg) {
     printf("[CPU Thread] Starting CPU stress test...\n");
+    volatile unsigned long long x = 0;
     while (1) {
-        volatile double result = 1.0;
-        for (int i = 0; i < 1000000; i++) { // Incrementa cálculos matemáticos
-            result *= 1.000001;
-        }
+        x++;
     }
     return NULL;
 }
@@ -35,7 +33,7 @@ void *ram_stress(void *arg) {
 
     memset(memory, 0, size);
     while (1) {
-        for (size_t i = 0; i < size; i += 4096) { // Accede más rápidamente a la memoria
+        for (size_t i = 0; i < size; i++) {
             memory[i] = (char)(i % 256);
         }
     }
