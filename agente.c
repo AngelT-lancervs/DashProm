@@ -93,7 +93,7 @@ int main() {
         get_metrics(metrics);
         printf("%s", metrics);
         fflush(stdout);
-        sleep(10); // Intervalo de 2 segundos para monitoreo en tiempo real
+        sleep(2);
     }
 
     return 0;
