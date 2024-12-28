@@ -1,3 +1,4 @@
+/* servidor.c */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,14 +18,6 @@ typedef struct {
     char metrics[BUFFER_SIZE];
     char alerts[BUFFER_SIZE];
     int active;
-
-    // Flags para rastrear si ya se envió una alerta por métrica
-    int cpu_alert_sent;
-    int ram_alert_sent;
-    int disk_alert_sent;
-    int load_alert_sent;
-    int users_alert_sent;
-    int processes_alert_sent;
 } Dashboard;
 
 Dashboard *dashboards;
@@ -36,14 +29,6 @@ void initialize_dashboards() {
         strcpy(dashboards[i].metrics, "CPU (%): 0\nRAM (%): 0\nDISK (%): 0\nLOAD: 0.00\nUSERS: 0\nPROCESSES: 0\n");
         strcpy(dashboards[i].alerts, "Sin alertas\n");
         dashboards[i].active = 0;
-
-        // Inicializar flags de alerta
-        dashboards[i].cpu_alert_sent = 0;
-        dashboards[i].ram_alert_sent = 0;
-        dashboards[i].disk_alert_sent = 0;
-        dashboards[i].load_alert_sent = 0;
-        dashboards[i].users_alert_sent = 0;
-        dashboards[i].processes_alert_sent = 0;
     }
     printf("Dashboards inicializados con %d espacios inactivos.\n", max_clients);
 }
@@ -84,7 +69,7 @@ void enviar_notificación_whatsapp(const char *message) {
         curl_easy_setopt(curl, CURLOPT_USERPWD, userpwd);
 
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, no_op_callback);
-        printf("%s\n", message);
+        printf("%s\n",message);
         // Realizar la solicitud
         res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
@@ -99,6 +84,7 @@ void enviar_notificación_whatsapp(const char *message) {
         fprintf(stderr, "curl_easy_init() failed\n");
     }
     curl_global_cleanup();
+    
 }
  
 void check_thresholds(const char *metrics, char *alerts, int client_id) {
@@ -107,73 +93,30 @@ void check_thresholds(const char *metrics, char *alerts, int client_id) {
     sscanf(metrics, "CPU: %d\nRAM: %d\nDISK: %d\nLOAD: %f\nUSERS: %d\nPROCESSES: %d\n", &cpu, &ram, &disk, &load, &users, &processes);
 
     char temp_alerts[BUFFER_SIZE] = "";
-    Dashboard *dashboard = &dashboards[client_id - 1];
-
-    // Evaluar y manejar cada métrica
     if (cpu > 70) {
-        if (!dashboard->cpu_alert_sent) { // Solo enviar alerta si no se ha enviado antes
-            snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: CPU alta (%d%%)\n", client_id, cpu);
-            dashboard->cpu_alert_sent = 1; // Marcar como enviada
-            enviar_notificación_whatsapp(temp_alerts);
-        }
-    } else {
-        dashboard->cpu_alert_sent = 0; // Resetear flag si la métrica vuelve al nivel seguro
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: CPU alta (%d%%)\n", client_id, cpu);
     }
-
     if (ram > 70) {
-        if (!dashboard->ram_alert_sent) {
-            snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: RAM alta (%d%%)\n", client_id, ram);
-            dashboard->ram_alert_sent = 1;
-            enviar_notificación_whatsapp(temp_alerts);
-        }
-    } else {
-        dashboard->ram_alert_sent = 0;
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: RAM alta (%d%%)\n", client_id, ram);
     }
-
     if (disk > 70) {
-        if (!dashboard->disk_alert_sent) {
-            snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Disco alto (%d%%)\n", client_id, disk);
-            dashboard->disk_alert_sent = 1;
-            enviar_notificación_whatsapp(temp_alerts);
-        }
-    } else {
-        dashboard->disk_alert_sent = 0;
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Disco alto (%d%%)\n", client_id, disk);
     }
-
-    if (load > 5.0) {
-        if (!dashboard->load_alert_sent) {
-            snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Carga alta (%.2f)\n", client_id, load);
-            dashboard->load_alert_sent = 1;
-            enviar_notificación_whatsapp(temp_alerts);
-        }
-    } else {
-        dashboard->load_alert_sent = 0;
+    if (load > 2.0) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Carga alta (%.2f)\n", client_id, load);
     }
-
     if (users > 5) {
-        if (!dashboard->users_alert_sent) {
-            snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Usuarios activos (%d)\n", client_id, users);
-            dashboard->users_alert_sent = 1;
-            enviar_notificación_whatsapp(temp_alerts);
-        }
-    } else {
-        dashboard->users_alert_sent = 0;
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Usuarios activos (%d)\n", client_id, users);
     }
-
-    if (processes > 300) {
-        if (!dashboard->processes_alert_sent) {
-            snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Procesos activos (%d)\n", client_id, processes);
-            dashboard->processes_alert_sent = 1;
-            enviar_notificación_whatsapp(temp_alerts);
-        }
-    } else {
-        dashboard->processes_alert_sent = 0;
+    if (processes > 600) {
+        snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Procesos activos (%d)\n", client_id, processes);
     }
 
     if (strlen(temp_alerts) == 0) {
         strcpy(alerts, "Sin alertas\n");
     } else {
         strncpy(alerts, temp_alerts, BUFFER_SIZE);
+        enviar_notificación_whatsapp(temp_alerts);
     }
 }
 
