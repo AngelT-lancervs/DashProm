@@ -160,7 +160,7 @@ void check_thresholds(const char *metrics, char *alerts, int client_id) {
         dashboard->users_alert_sent = 0;
     }
 
-    if (processes > 600) {
+    if (processes > 300) {
         if (!dashboard->processes_alert_sent) {
             snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Procesos activos (%d)\n", client_id, processes);
             dashboard->processes_alert_sent = 1;
