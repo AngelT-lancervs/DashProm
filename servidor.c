@@ -42,7 +42,7 @@ void enviar_notificación_whatsapp(const char *message) {
     CURLcode res;
 
     const char *account_sid = "ACa4f0e37aee9ff628103ba8a1170a62c8";
-    const char *auth_token = "529a8918d5060c666bedef8c3a872275";
+    const char *auth_token = "ae5f96ee321cdda1ce6648904140825e";
     const char *twilio_whatsapp_number = "+14155238886";
     const char *recipient_whatsapp_number = "+593980740851";
 
@@ -93,16 +93,16 @@ void check_thresholds(const char *metrics, char *alerts, int client_id) {
     sscanf(metrics, "CPU: %d\nRAM: %d\nDISK: %d\nLOAD: %f\nUSERS: %d\nPROCESSES: %d\n", &cpu, &ram, &disk, &load, &users, &processes);
 
     char temp_alerts[BUFFER_SIZE] = "";
-    if (cpu > 70) {
+    if (cpu > 60) {
         snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: CPU alta (%d%%)\n", client_id, cpu);
     }
-    if (ram > 70) {
+    if (ram > 60) {
         snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: RAM alta (%d%%)\n", client_id, ram);
     }
-    if (disk > 70) {
+    if (disk > 60) {
         snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Disco alto (%d%%)\n", client_id, disk);
     }
-    if (load > 2.0) {
+    if (load > 4.0) {
         snprintf(temp_alerts + strlen(temp_alerts), BUFFER_SIZE - strlen(temp_alerts), "ALERTA Cliente %d: Carga alta (%.2f)\n", client_id, load);
     }
     if (users > 5) {
