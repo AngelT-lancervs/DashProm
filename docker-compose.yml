@@ -1,0 +1,17 @@
+
+services:
+  servidor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "1234:1234"
+    networks:
+      - custom_bridge
+
+networks:
+  custom_bridge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
